@@ -145,11 +145,47 @@ const updateHeadersInPlace = (
 };
 
 const app = express();
-app.use(cors());
-app.use((req, res, next) => {
-  res.header("Access-Control-Expose-Headers", "mcp-session-id");
-  next();
-});
+
+// Configure CORS to explicitly allow frontend origins, allow custom headers, expose headers, and handle preflight
+const clientPort = process.env.CLIENT_PORT || "6274";
+const defaultOrigin = `http://localhost:${clientPort}`;
+const computedAllowedOrigins = (process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(",")
+  : [defaultOrigin]
+).map((o) => o.trim()).filter(Boolean);
+
+const corsOptions: cors.CorsOptions = {
+  origin: (origin, callback) => {
+    // Allow requests with no origin (e.g., curl, mobile clients)
+    if (!origin) {
+      return callback(null, true);
+    }
+    if (computedAllowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error(`CORS policy: Origin ${origin} not allowed`));
+    }
+  },
+  credentials: true, // set true if you need to support cookies / credentials
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: [
+    "Accept",
+    "Authorization",
+    "Content-Type",
+    "X-Requested-With",
+    "x-custom-auth-header",
+    "x-custom-auth-headers",
+    "mcp-session-id",
+    "x-mcp-proxy-auth",
+    "x-api-key",
+  ],
+  exposedHeaders: ["mcp-session-id"], // allow browser JS to read this response header
+  optionsSuccessStatus: 204,
+};
+
+app.use(cors(corsOptions));
+// Ensure preflight requests are handled for all routes
+app.options("*", cors(corsOptions));
 
 const webAppTransports: Map<string, Transport> = new Map<string, Transport>(); // Web app transports by web app sessionId
 const serverTransports: Map<string, Transport> = new Map<string, Transport>(); // Server Transports by web app sessionId
@@ -169,10 +205,10 @@ const originValidationMiddleware = (
   const origin = req.headers.origin;
 
   // Default origins based on CLIENT_PORT or use environment variable
-  const clientPort = process.env.CLIENT_PORT || "6274";
-  const defaultOrigin = `http://localhost:${clientPort}`;
+  const clientPortLocal = process.env.CLIENT_PORT || "6274";
+  const defaultOriginLocal = `http://localhost:${clientPortLocal}`;
   const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(",") || [
-    defaultOrigin,
+    defaultOriginLocal,
   ];
 
   if (origin && !allowedOrigins.includes(origin)) {
